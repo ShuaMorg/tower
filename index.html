@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tower Defense Game</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f0f0f0;
+            background-image: url('bggrass.jpg');
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+        canvas {
+            border: 1px solid black;
+        }
+    </style>
+</head>
+<body>
+    <script>
+        // Basic Tower Defense Game
+        // Developed using HTML5 Canvas and JavaScript
+
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 800;
+        canvas.height = 600;
+        document.body.appendChild(canvas);
+
+        // Adjust the background size to match the canvas dimensions
+        function updateBackgroundSize() {
+            document.body.style.backgroundSize = `${canvas.width}px ${canvas.height}px`;
+        }
+
+        // Call the function once the canvas is added
+        updateBackgroundSize();
+
+        // Game variables
+        let enemies = [];
+        let towers = [];
+        let projectiles = [];
+        let obstacles = [];
+        let gold = 100;
+        let lives = 10;
+        let wave = 1;
+        let spawnInterval = 2000;
+        let lastSpawnTime = 0;
+        let enemiesDestroyed = 0;
+        let enemiesToDestroy = 50;
+        let spawnMultiplier = 1; // To increase spawn speed exponentially
+        let gameOver = false;
+
+        // Load images (embedded as Base64 data URIs)
+        const enemyImage = new Image();
+        const towerImage = new Image();
+        const obstacleImage = new Image();
+        const projectileImage = new Image();
+        projectileImage.src = 'fire.png'; // Updated to use fire.png
+
+        enemyImage.src = 'cart.png'; // Updated to use cart.png
+        towerImage.src = 'tower.webp'; // Updated to use tower.webp
+        obstacleImage.src = 'roof1.png';
+
+        // Game loop variables
+        let lastTime = 0;
+
+        // Add obstacles to the game
+        obstacles.push({ x: 300, y: 200, width: 100, height: 100 });
+        obstacles.push({ x: 500, y: 400, width: 100, height: 100 });
+
+        // Utility functions
+        function drawText(text, x, y, fontSize = '20px', color = 'black') {
+            ctx.font = `${fontSize} Arial`;
+            ctx.fillStyle = color;
+            ctx.fillText(text, x, y);
+        }
+
+        function drawObstacle(obstacle) {
+            ctx.drawImage(obstacleImage, obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+        }
+
+        // Check collision with obstacle
+        function isCollidingWithObstacle(x, y, width, height) {
+            for (let obstacle of obstacles) {
+                if (
+                    x < obstacle.x + obstacle.width &&
+                    x + width > obstacle.x &&
+                    y < obstacle.y + obstacle.height &&
+                    y + height > obstacle.y
+                ) {
+                    return obstacle;
+                }
+            }
+            return null;
+        }
+
+        // Enemy class
+        class Enemy {
+            constructor(x, y, speed, health) {
+                this.x = x;
+                this.y = y;
+                this.speed = speed;
+                this.health = health;
+                this.width = 50;
+                this.height = 30;
+                this.avoidingObstacle = false;
+                this.avoidDirection = { dx: 0, dy: 0 };
+            }
+
+            update(deltaTime) {
+                if (this.avoidingObstacle) {
+                    // Move around the obstacle
+                    this.x += this.avoidDirection.dx * this.speed * deltaTime / 1000;
+                    this.y += this.avoidDirection.dy * this.speed * deltaTime / 1000;
+
+                    const obstacle = isCollidingWithObstacle(this.x, this.y, this.width, this.height);
+                    if (!obstacle) {
+                        // If no longer colliding, stop avoiding
+                        this.avoidingObstacle = false;
+                    }
+                } else {
+                    // Move straight toward the goal
+                    const newX = this.x + this.speed * deltaTime / 1000;
+                    const obstacle = isCollidingWithObstacle(newX, this.y, this.width, this.height);
+
+                    if (obstacle) {
+                        // Start avoiding the obstacle
+                        this.avoidingObstacle = true;
+                        // Determine the direction to move around it (simple logic: move up or down)
+                        if (this.y < obstacle.y) {
+                            this.avoidDirection = { dx: 0, dy: -1 };
+                        } else {
+                            this.avoidDirection = { dx: 0, dy: 1 };
+                        }
+                    } else {
+                        // Continue moving straight
+                        this.x = newX;
+                    }
+                }
+
+                // Check if the enemy has reached the end of the screen
+                if (this.x > canvas.width) {
+                    lives--; // Deduct a life
+                    enemies.splice(enemies.indexOf(this), 1); // Remove the enemy
+
+                    // Check for game over
+                    if (lives <= 0) {
+                        gameOver = true;
+                    }
+                }
+            }
+
+            draw() {
+                ctx.drawImage(enemyImage, this.x, this.y, this.width, this.height);
+            }
+        }
+
+        // Tower class
+        class Tower {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.range = 100;
+                this.cooldown = 1000;
+                this.lastShotTime = 0;
+            }
+
+            update(deltaTime) {
+                let now = performance.now();
+                if (now - this.lastShotTime > this.cooldown) {
+                    for (let enemy of enemies) {
+                        let dx = enemy.x - this.x;
+                        let dy = enemy.y - this.y;
+                        let distance = Math.sqrt(dx * dx + dy * dy);
+                        if (distance <= this.range) {
+                            projectiles.push(new Projectile(this.x, this.y, dx / distance, dy / distance));
+                            this.lastShotTime = now;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            draw() {
+                ctx.drawImage(towerImage, this.x - 15, this.y - 15, 30, 50);
+            }
+        }
+
+        // Projectile class
+        class Projectile {
+            constructor(x, y, dx, dy) {
+                this.x = x;
+                this.y = y;
+                this.dx = dx;
+                this.dy = dy;
+                this.speed = 200;
+                this.size = 5;
+            }
+
+            update(deltaTime) {
+                this.x += this.dx * this.speed * deltaTime / 1000;
+                this.y += this.dy * this.speed * deltaTime / 1000;
+
+                // Check for collision with enemies
+                for (let i = enemies.length - 1; i >= 0; i--) {
+                    let enemy = enemies[i];
+                    if (
+                        this.x > enemy.x &&
+                        this.x < enemy.x + enemy.width &&
+                        this.y > enemy.y &&
+                        this.y < enemy.y + enemy.height
+                    ) {
+                        enemies.splice(i, 1); // Remove the enemy
+
+                        // Award gold based on the wave
+                        if (wave === 1) {
+                            gold += 10;
+                        } else if (wave === 2) {
+                            gold += 5;
+                        } else {
+                            gold += Math.max(1, 10 / wave); // Decrease gold rewards as wave increases
+                        }
+
+                        enemiesDestroyed++;
+
+                        // Check for wave progression
+                        if (enemiesDestroyed >= enemiesToDestroy) {
+                            wave++;
+                            enemiesDestroyed = 0;
+                            enemiesToDestroy += 50;
+                            spawnMultiplier *= 2; // Exponential spawn rate increase
+                            spawnInterval = 2000 / spawnMultiplier; // Adjust spawn interval
+                        }
+                        return true; // Stop checking for collisions
+                    }
+                }
+            }
+
+            draw() {
+    ctx.drawImage(projectileImage, this.x - this.size / 5, this.y - this.size / 5, this.size, this.size);
+}
+
+
+
+        }
+
+        // Main game functions
+        function spawnEnemy() {
+            enemies.push(new Enemy(0, Math.random() * canvas.height, 50, 3));
+        }
+
+        function update(deltaTime) {
+            if (gameOver) return;
+
+            if (performance.now() - lastSpawnTime > spawnInterval) {
+                spawnEnemy();
+                lastSpawnTime = performance.now();
+            }
+
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                enemies[i].update(deltaTime);
+            }
+
+            for (let tower of towers) {
+                tower.update(deltaTime);
+            }
+
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                let projectile = projectiles[i];
+                if (projectile.update(deltaTime)) {
+                    projectiles.splice(i, 1); // Remove the projectile on collision
+                }
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (gameOver) {
+                drawText('Game Over', canvas.width / 2 - 60, canvas.height / 2 - 20, '30px', 'red');
+                drawText(`You reached wave ${wave}`, canvas.width / 2 - 90, canvas.height / 2 + 20, '20px', 'black');
+                return;
+            }
+
+            for (let obstacle of obstacles) {
+                drawObstacle(obstacle);
+            }
+
+            for (let enemy of enemies) {
+                enemy.draw();
+            }
+
+            for (let tower of towers) {
+                tower.draw();
+            }
+
+            for (let projectile of projectiles) {
+                projectile.draw();
+            }
+
+                // UI
+                drawText(`Gold: ${gold}`, 10, 20);
+                drawText(`Lives: ${lives}`, 10, 40);
+                drawText(`Wave: ${wave}`, 10, 60);
+            }
+
+            function gameLoop(timestamp) {
+                let deltaTime = timestamp - lastTime;
+                lastTime = timestamp;
+
+                update(deltaTime);
+                draw();
+
+                if (!gameOver) {
+                    requestAnimationFrame(gameLoop);
+                }
+            }
+
+            // Add event listeners for placing towers
+// Function to handle placing towers on click or touch
+function placeTower(x, y) {
+    if (gold >= 50) {
+        towers.push(new Tower(x, y));
+        gold -= 50;
+    }
+}
+
+// Add event listener for mouse clicks
+canvas.addEventListener('click', (e) => {
+    let x = e.offsetX;
+    let y = e.offsetY;
+    placeTower(x, y);
+});
+
+// Add event listener for touch events
+canvas.addEventListener('touchstart', (e) => {
+    e.preventDefault(); // Prevent default touch behavior
+    let touch = e.touches[0]; // Get the first touch point
+    let rect = canvas.getBoundingClientRect();
+    let x = touch.clientX - rect.left;
+    let y = touch.clientY - rect.top;
+    placeTower(x, y);
+});
+
+
+            // Start the game
+            requestAnimationFrame(gameLoop);
+        </script>
+    </body>
+</html>
