@@ -19,9 +19,20 @@
         canvas {
             border: 1px solid black;
         }
+        #musicButton {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            padding: 10px 20px;
+            background-color: #ff0000;
+            color: #ffffff;
+            border: none;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
+    <button id="musicButton">Turn Music Off</button>
     <script>
         // Basic Tower Defense Game
         // Developed using HTML5 Canvas and JavaScript
@@ -54,24 +65,104 @@
         let enemiesToDestroy = 50;
         let spawnMultiplier = 1; // To increase spawn speed exponentially
         let gameOver = false;
+        let level = 1;
+
+        // Size multipliers for each level
+        const sizeMultipliers = {
+            1: 1,
+            2: .8,
+            3: .7,
+            4: 0.5
+        };
 
         // Load images (embedded as Base64 data URIs)
         const enemyImage = new Image();
         const towerImage = new Image();
-        const obstacleImage = new Image();
         const projectileImage = new Image();
         projectileImage.src = 'fire.png'; // Updated to use fire.png
 
         enemyImage.src = 'cart.png'; // Updated to use cart.png
         towerImage.src = 'tower.webp'; // Updated to use tower.webp
-        obstacleImage.src = 'roof1.png';
+
+        // Load sounds
+        const cannonSound = new Audio('cannon.mp3');
+        const cartSound = new Audio('cart.mp3');
+        const destroySound = new Audio('destroy.mp3');
+        const backgroundMusic = new Audio('music.mp3');
+        backgroundMusic.loop = true;
+        backgroundMusic.play();
+
+        // Add event listener to the music button
+        const musicButton = document.getElementById('musicButton');
+        musicButton.addEventListener('click', () => {
+            if (backgroundMusic.paused) {
+                backgroundMusic.play();
+                musicButton.textContent = 'Turn Music Off';
+            } else {
+                backgroundMusic.pause();
+                musicButton.textContent = 'Turn Music On';
+            }
+        });
 
         // Game loop variables
         let lastTime = 0;
 
         // Add obstacles to the game
-        obstacles.push({ x: 300, y: 200, width: 100, height: 100 });
-        obstacles.push({ x: 500, y: 400, width: 100, height: 100 });
+        function addObstacles() {
+            const level1Obstacles = [
+                { x: 250, y: 50, width: 200, height: 200, imageSrc: 'roof4.png' },
+                { x: 550, y: 350, width: 200, height: 200, imageSrc: 'roof4.png' }
+            ];
+
+            const level2Obstacles = [
+                { x: 200, y: 150, width: 120, height: 120, imageSrc: 'roof2.png' },
+                { x: 600, y: 350, width: 120, height: 120, imageSrc: 'roof2.png' },
+                { x: 0, y: 0, width: 800, height: 180, imageSrc: 'trans.png' }
+            ];
+
+            const level3Obstacles = [
+                { x: 100, y: 100, width: 150, height: 150, imageSrc: 'roof3.png' },
+                { x: 400, y: 300, width: 150, height: 150, imageSrc: 'roof3.png' }
+            ];
+
+            const level4Obstacles = [
+                { x: 118, y: 140.125, width: 100, height: 140, imageSrc: 'trans.png' },
+                { x: 463, y: 186.125, width: 30, height: 10, imageSrc: 'trans.png' },
+                { x: 491, y: 198.125, width: 30, height: 30, imageSrc: 'trans.png' },
+                { x: 605, y: 384.125, width: 30, height: 30, imageSrc: 'trans.png' },
+                { x: 329, y: 393.125, width: 30, height: 30, imageSrc: 'trans.png' },
+                { x: 358, y: 354.125, width: 30, height: 50, imageSrc: 'trans.png' },
+                { x: 599, y: 105.125, width: 30, height: 90, imageSrc: 'trans.png' },
+                { x: 625, y: 110.125, width: 30, height: 30, imageSrc: 'trans.png' },
+                { x: 633, y: 403.125, width: 30, height: 50, imageSrc: 'trans.png' }
+            ];
+
+            let obstacleDefinitions;
+            switch (level) {
+                case 1:
+                    obstacleDefinitions = level1Obstacles;
+                    break;
+                case 2:
+                    obstacleDefinitions = level2Obstacles;
+                    break;
+                case 3:
+                    obstacleDefinitions = level3Obstacles;
+                    break;
+                case 4:
+                    obstacleDefinitions = level4Obstacles;
+                    break;
+                default:
+                    obstacleDefinitions = [];
+            }
+
+            for (let def of obstacleDefinitions) {
+                const img = new Image();
+                img.src = def.imageSrc;
+                obstacles.push({ ...def, image: img });
+            }
+        }
+
+        addObstacles();
 
         // Utility functions
         function drawText(text, x, y, fontSize = '20px', color = 'black') {
@@ -81,7 +172,7 @@
         }
 
         function drawObstacle(obstacle) {
-            ctx.drawImage(obstacleImage, obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+            ctx.drawImage(obstacle.image, obstacle.x, obstacle.y, obstacle.width, obstacle.height);
         }
 
         // Check collision with obstacle
@@ -106,10 +197,11 @@
                 this.y = y;
                 this.speed = speed;
                 this.health = health;
-                this.width = 50;
-                this.height = 30;
+                this.width = 50 * sizeMultipliers[level];
+                this.height = 30 * sizeMultipliers[level];
                 this.avoidingObstacle = false;
                 this.avoidDirection = { dx: 0, dy: 0 };
+                cartSound.play();
             }
 
             update(deltaTime) {
@@ -168,6 +260,8 @@
                 this.range = 100;
                 this.cooldown = 1000;
                 this.lastShotTime = 0;
+                this.width = 30 * sizeMultipliers[level];
+                this.height = 50 * sizeMultipliers[level];
             }
 
             update(deltaTime) {
@@ -180,6 +274,7 @@
                         if (distance <= this.range) {
                             projectiles.push(new Projectile(this.x, this.y, dx / distance, dy / distance));
                             this.lastShotTime = now;
+                            cannonSound.play();
                             break;
                         }
                     }
@@ -187,7 +282,7 @@
             }
 
             draw() {
-                ctx.drawImage(towerImage, this.x - 15, this.y - 15, 30, 50);
+                ctx.drawImage(towerImage, this.x - this.width / 2, this.y - this.height / 2, this.width, this.height);
             }
         }
 
@@ -216,6 +311,7 @@
                         this.y < enemy.y + enemy.height
                     ) {
                         enemies.splice(i, 1); // Remove the enemy
+                        destroySound.play();
 
                         // Award gold based on the wave
                         if (wave === 1) {
@@ -233,8 +329,18 @@
                             wave++;
                             enemiesDestroyed = 0;
                             enemiesToDestroy += 50;
-                            spawnMultiplier *= 2; // Exponential spawn rate increase
+                            spawnMultiplier *= 1.5; // Exponential spawn rate increase
                             spawnInterval = 2000 / spawnMultiplier; // Adjust spawn interval
+
+                            // Check for level progression
+                            if (wave > 2 && level < 4) { // Change this condition to wave > 2 for testing
+                                level++;
+                                wave = 1;
+                                document.body.style.backgroundImage = `url('bglevel${level}.png')`;
+                                obstacles = [];
+                                towers = []; // Remove existing towers
+                                addObstacles();
+                            }
                         }
                         return true; // Stop checking for collisions
                     }
@@ -242,11 +348,8 @@
             }
 
             draw() {
-    ctx.drawImage(projectileImage, this.x - this.size / 5, this.y - this.size / 5, this.size, this.size);
-}
-
-
-
+                ctx.drawImage(projectileImage, this.x - this.size / 5, this.y - this.size / 5, this.size, this.size);
+            }
         }
 
         // Main game functions
@@ -283,7 +386,7 @@
 
             if (gameOver) {
                 drawText('Game Over', canvas.width / 2 - 60, canvas.height / 2 - 20, '30px', 'red');
-                drawText(`You reached wave ${wave}`, canvas.width / 2 - 90, canvas.height / 2 + 20, '20px', 'black');
+                drawText(`You reached wave ${wave} and level ${level}`, canvas.width / 2 - 90, canvas.height / 2 + 20, '20px', 'black');
                 return;
             }
 
@@ -303,53 +406,53 @@
                 projectile.draw();
             }
 
-                // UI
-                drawText(`Gold: ${gold}`, 10, 20);
-                drawText(`Lives: ${lives}`, 10, 40);
-                drawText(`Wave: ${wave}`, 10, 60);
+            // UI
+            drawText(`Gold: ${gold}`, 10, 20);
+            drawText(`Lives: ${lives}`, 10, 40);
+            drawText(`Wave: ${wave}`, 10, 60);
+            drawText(`Level: ${level}`, 10, 80);
+        }
+
+        function gameLoop(timestamp) {
+            let deltaTime = timestamp - lastTime;
+            lastTime = timestamp;
+
+            update(deltaTime);
+            draw();
+
+            if (!gameOver) {
+                requestAnimationFrame(gameLoop);
             }
+        }
 
-            function gameLoop(timestamp) {
-                let deltaTime = timestamp - lastTime;
-                lastTime = timestamp;
-
-                update(deltaTime);
-                draw();
-
-                if (!gameOver) {
-                    requestAnimationFrame(gameLoop);
-                }
+        // Add event listeners for placing towers
+        // Function to handle placing towers on click or touch
+        function placeTower(x, y) {
+            if (gold >= 50) {
+                towers.push(new Tower(x, y));
+                gold -= 50;
             }
+        }
 
-            // Add event listeners for placing towers
-// Function to handle placing towers on click or touch
-function placeTower(x, y) {
-    if (gold >= 50) {
-        towers.push(new Tower(x, y));
-        gold -= 50;
-    }
-}
+        // Add event listener for mouse clicks
+        canvas.addEventListener('click', (e) => {
+            let x = e.offsetX;
+            let y = e.offsetY;
+            placeTower(x, y);
+        });
 
-// Add event listener for mouse clicks
-canvas.addEventListener('click', (e) => {
-    let x = e.offsetX;
-    let y = e.offsetY;
-    placeTower(x, y);
-});
+        // Add event listener for touch events
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // Prevent default touch behavior
+            let touch = e.touches[0]; // Get the first touch point
+            let rect = canvas.getBoundingClientRect();
+            let x = touch.clientX - rect.left;
+            let y = touch.clientY - rect.top;
+            placeTower(x, y);
+        });
 
-// Add event listener for touch events
-canvas.addEventListener('touchstart', (e) => {
-    e.preventDefault(); // Prevent default touch behavior
-    let touch = e.touches[0]; // Get the first touch point
-    let rect = canvas.getBoundingClientRect();
-    let x = touch.clientX - rect.left;
-    let y = touch.clientY - rect.top;
-    placeTower(x, y);
-});
-
-
-            // Start the game
-            requestAnimationFrame(gameLoop);
-        </script>
-    </body>
+        // Start the game
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
 </html>
